@@ -52,7 +52,10 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	sql = strings.TrimRight(sql, ";") //删除sql语句最后的分号
 	hasHandled, err := c.preHandleShard(sql)
 	if err != nil {
-		golog.Error("server", "preHandleShard", err.Error(), 0, "hasHandled", hasHandled)
+		golog.Error("server", "preHandleShard", err.Error(), 0,
+			"sql", sql,
+			"hasHandled", hasHandled,
+		)
 		return err
 	}
 	if hasHandled {
@@ -90,7 +93,9 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	case *sqlparser.AdminHelp:
 		return c.handleAdminHelp(v)
 	case *sqlparser.UseDB:
-		return c.handleUseDB(v)
+		return c.handleUseDB(v.DB)
+	case *sqlparser.SimpleSelect:
+		return c.handleSimpleSelect(v)
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}

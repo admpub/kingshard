@@ -482,14 +482,55 @@ func (r *Router) buildReplacePlan(statement sqlparser.Statement) (*Plan, error) 
 //rewrite select sql
 func (r *Router) rewriteSelectSql(plan *Plan, node *sqlparser.Select, tableIndex int) string {
 	buf := sqlparser.NewTrackedBuffer(nil)
-	buf.Fprintf("select %v%s%v",
+	buf.Fprintf("select %v%s",
 		node.Comments,
 		node.Distinct,
-		node.SelectExprs,
 	)
+
+	var prefix string
+	//rewrite select expr
+	for _, expr := range node.SelectExprs {
+		switch v := expr.(type) {
+		case *sqlparser.StarExpr:
+			//for shardTable.*,need replace table into shardTable_xxxx.
+			if string(v.TableName) == plan.Rule.Table {
+				fmt.Fprintf(buf, "%s%s_%04d.*",
+					prefix,
+					plan.Rule.Table,
+					tableIndex,
+				)
+			} else {
+				buf.Fprintf("%s%v", prefix, expr)
+			}
+		case *sqlparser.NonStarExpr:
+			//rewrite shardTable.column as a
+			//into shardTable_xxxx.column as a
+			if colName, ok := v.Expr.(*sqlparser.ColName); ok {
+				if string(colName.Qualifier) == plan.Rule.Table {
+					fmt.Fprintf(buf, "%s%s_%04d.%s",
+						prefix,
+						plan.Rule.Table,
+						tableIndex,
+						string(colName.Name),
+					)
+				} else {
+					buf.Fprintf("%s%v", prefix, colName)
+				}
+				//if expr has as
+				if v.As != nil {
+					buf.Fprintf(" as %s", v.As)
+				}
+			} else {
+				buf.Fprintf("%s%v", prefix, expr)
+			}
+		default:
+			buf.Fprintf("%s%v", prefix, expr)
+		}
+		prefix = ", "
+	}
 	//insert the group columns in the first of select cloumns
 	if len(node.GroupBy) != 0 {
-		prefix := ","
+		prefix = ","
 		for _, n := range node.GroupBy {
 			buf.Fprintf("%s%v", prefix, n)
 		}
@@ -540,15 +581,22 @@ func (r *Router) rewriteSelectSql(plan *Plan, node *sqlparser.Select, tableIndex
 		)
 	}
 	//append other tables
-	prefix := ", "
+	prefix = ", "
 	for i := 1; i < len(node.From); i++ {
 		buf.Fprintf("%s%v", prefix, node.From[i])
 	}
-	buf.Fprintf("%v%v%v%v%s",
+
+	newLimit, err := node.Limit.RewriteLimit()
+	if err != nil {
+		//do not change limit
+		newLimit = node.Limit
+	}
+	buf.Fprintf("%v%v%v%v%v%s",
 		node.Where,
 		node.GroupBy,
 		node.Having,
 		node.OrderBy,
+		newLimit,
 		node.Lock,
 	)
 	return buf.String()
@@ -607,7 +655,7 @@ func (r *Router) generateInsertSql(plan *Plan, stmt sqlparser.Statement) error {
 			nodeIndex := plan.Rule.TableToNode[tableIndex]
 			nodeName := r.Nodes[nodeIndex]
 
-			buf.Fprintf("insert %vinto %v", node.Comments, node.Table)
+			buf.Fprintf("insert %v%s into %v", node.Comments, node.Ignore, node.Table)
 			fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
 			buf.Fprintf("%v %v%v",
 				node.Columns,

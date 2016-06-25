@@ -354,7 +354,7 @@ func (c *Conn) Ping() error {
 }
 
 func (c *Conn) UseDB(dbName string) error {
-	if c.db == dbName {
+	if c.db == dbName || len(dbName) == 0 {
 		return nil
 	}
 
@@ -444,6 +444,7 @@ func (c *Conn) SetCharset(charset string) error {
 		return err
 	} else {
 		c.collation = cid
+		c.charset = charset
 		return nil
 	}
 }
