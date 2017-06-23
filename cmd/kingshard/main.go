@@ -28,6 +28,7 @@ import (
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/core/hack"
 	"github.com/flike/kingshard/proxy/server"
+	"github.com/flike/kingshard/web"
 )
 
 var configFile *string = flag.String("config", "/etc/ks.yaml", "kingshard config file")
@@ -95,6 +96,7 @@ func main() {
 	}
 
 	var svr *server.Server
+	var apiSvr *web.ApiServer
 	svr, err = server.NewServer(cfg)
 	if err != nil {
 		golog.Error("main", "main", err.Error(), 0)
@@ -102,21 +104,37 @@ func main() {
 		golog.GlobalSqlLogger.Close()
 		return
 	}
+	apiSvr, err = web.NewApiServer(cfg, svr)
+	if err != nil {
+		golog.Error("main", "main", err.Error(), 0)
+		golog.GlobalSysLogger.Close()
+		golog.GlobalSqlLogger.Close()
+		svr.Close()
+		return
+	}
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
 		syscall.SIGINT,
 		syscall.SIGTERM,
-		syscall.SIGQUIT)
+		syscall.SIGQUIT,
+		syscall.SIGPIPE,
+	)
 
 	go func() {
-		sig := <-sc
-		golog.Info("main", "main", "Got signal", 0, "signal", sig)
-		golog.GlobalSysLogger.Close()
-		golog.GlobalSqlLogger.Close()
-		svr.Close()
+		for {
+			sig := <-sc
+			if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
+				golog.Info("main", "main", "Got signal", 0, "signal", sig)
+				golog.GlobalSysLogger.Close()
+				golog.GlobalSqlLogger.Close()
+				svr.Close()
+			} else if sig == syscall.SIGPIPE {
+				golog.Info("main", "main", "Ignore broken pipe signal", 0)
+			}
+		}
 	}()
-
+	go apiSvr.Run()
 	svr.Run()
 }
 

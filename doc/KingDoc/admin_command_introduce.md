@@ -1,4 +1,4 @@
-# 管理端命令
+# 管理端命令 [Web API版本](./kingshard_admin_api.md)
 
 kingshard的管理端口复用了工作端口，通过特定的关键字来标示，目前支持对后端DB常用的管理操作。
 
@@ -124,5 +124,16 @@ admin server(opt,k,v) values('del','black_sql','select count(*) from sbtest1')
 
 #保存当前配置
 admin server(opt,k,v) values('save','proxy','config')
+
+```
+
+## 支持LVS/Keepalived
+
+```
+#查看kingshard运行状态
+admin server(opt,k,v) values('show','proxy','status')
+
+#改变kingshard运行状态 online: 在线 offline: 下线
+admin server(opt,k,v) values('change','proxy','online')
 
 ```

@@ -7,7 +7,7 @@
 kingshard中的分表字段支持MySQL中三种类型的时间格式
 
 - date类型，格式：YYYY-MM-DD，例如:2016-03-04,注意：2016-3-04，2016-03-4，2016-3-4等格式kingshard都是不支持的。
-- datetime类型，格式：YYYY-MM-DD HH:MM:SS，例如:2016-03-04,注意：2016-3-04 13:23:43，2016-03-4  13:23:43，2016-3-4  13:23:43等格式kingshard都是不支持的，必须严格按照规定的格式，kingshard才支持。
+- datetime类型，格式：YYYY-MM-DD HH:MM:SS，例如:2016-03-04 13:23:43,注意：2016-3-04 13:23:43，2016-03-4  13:23:43，2016-3-4  13:23:43等格式kingshard都是不支持的，必须严格按照规定的格式，kingshard才支持。
 - timestamp类型，整数类型，例如：1457165568，对应的是：2016-3-5 16:12:48。
 
 ## 2. 支持的时间分表类型
@@ -15,7 +15,7 @@ kingshard中的分表字段支持MySQL中三种类型的时间格式
 kingshard支持MySQL中三种格式的时间类型
 
 - date类型，格式：YYYY-MM-DD，例如:2016-03-04,注意：2016-3-04，2016-03-4，2016-3-4等格式kingshard都是不支持的。
-- datetime，格式：YYYY-MM-DD HH:MM:SS，例如:2016-03-04,注意：2016-3-04 13:23:43，2016-03-4  13:23:43，2016-3-4  13:23:43等格式kingshard都是不支持的，必须严格按照规定的格式，kingshard才支持。
+- datetime，格式：YYYY-MM-DD HH:MM:SS，例如:2016-03-04 13:23:43,注意：2016-3-04 13:23:43，2016-03-4  13:23:43，2016-3-4  13:23:43等格式kingshard都是不支持的，必须严格按照规定的格式，kingshard才支持。
 - timestamp，整数类型。
 
 ## 3. 功能演示
@@ -29,6 +29,11 @@ addr : 0.0.0.0:9696
 # server user and password
 user :  kingshard
 password : kingshard
+# the web api server
+web_addr : 0.0.0.0:9797
+#HTTP Basic Auth
+web_user : admin
+web_password : admin
 
 # if set log_path, the sql log will write into log_path/sql.log,the system log
 # will write into log_path/sys.log
@@ -39,7 +44,7 @@ log_level : debug
 
 # if set log_sql(on|off) off,the sql log will not output
 log_sql: on
- 
+
 # only log the query that take more than slow_log_time ms
 #slow_log_time : 100
 
@@ -56,38 +61,38 @@ log_sql: on
 
 # node is an agenda for real remote mysql server.
 nodes :
-- 
-    name : node1 
+-
+    name : node1
 
     # default max conns for mysql server
     max_conns_limit : 32
 
     # all mysql in a node must have the same user and password
-    user :  kingshard 
+    user :  kingshard
     password : kingshard
 
-    # master represents a real mysql master server 
+    # master represents a real mysql master server
     master : 127.0.0.1:3306
 
-    # slave represents a real mysql salve server,and the number after '@' is 
+    # slave represents a real mysql salve server,and the number after '@' is
     # read load weight of this slave.
     #slave : 192.168.59.101:3307@2,192.168.59.101:3307@3
     down_after_noalive : 32
-- 
-    name : node2 
+-
+    name : node2
 
     # default max conns for mysql server
     max_conns_limit : 32
 
     # all mysql in a node must have the same user and password
-    user :  kingshard 
+    user :  kingshard
     password : kingshard
 
-    # master represents a real mysql master server 
+    # master represents a real mysql master server
     master : 192.168.59.103:3307
 
-    # slave represents a real mysql salve server 
-    slave : 
+    # slave represents a real mysql salve server
+    slave :
 
     # down mysql after N seconds noalive
     # 0 will no down
@@ -95,11 +100,11 @@ nodes :
 
 # schema defines sharding rules, the db is the sharding table database.
 schema :
-    db : kingshard
     nodes: [node1,node2]
-    default: node1      
+    default: node1
     shard:
     -
+       db : kingshard
        table: test_shard_year
        key: ctime
        type: date_day
@@ -219,7 +224,7 @@ mysql> select * from test_shard_year where id = 1457410310;
 该配置表示：
 
 - sharding key是ctime。
-- 按年的分表类型是:`date_month`。
+- 按月的分表类型是:`date_month`。
 - `test_shard_month_201512, test_shard_month_201601, test_shard_month_201602`两个子表落在node1上，`test_shard_month_201609，test_shard_month_201610`两个子表落在node2上。
 - 如果你一个node上只包含一张子表，你可以这样配置`date_range[201501,201609-201610]`。
 
@@ -230,7 +235,7 @@ mysql> select * from test_shard_year where id = 1457410310;
 ### 3.3 按天分表
 
 #### 配置说明
-按月分表的配置项设置如下：
+按天分表的配置项设置如下：
 
 ```
        table: test_shard_day
@@ -242,7 +247,7 @@ mysql> select * from test_shard_year where id = 1457410310;
 该配置表示：
 
 - sharding key是ctime。
-- 按年的分表类型是:`date_day`。
+- 按天的分表类型是:`date_day`。
 - `test_shard_day_20151222, test_shard_day_20151223, test_shard_day_20151224`两个子表落在node1上，`test_shard_day_20160901，test_shard_day_20160902`两个子表落在node2上。
 - 如果你一个node上只包含一张子表，你可以这样配置`date_range[20150101,20160901-20161010]`。
 

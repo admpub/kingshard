@@ -79,23 +79,29 @@ var (
 
 %token LEX_ERROR
 %token <empty> SELECT INSERT UPDATE DELETE FROM WHERE GROUP HAVING ORDER BY LIMIT FOR
-%token <empty> ALL DISTINCT AS EXISTS IN IS LIKE BETWEEN NULL ASC DESC VALUES INTO DUPLICATE KEY DEFAULT SET LOCK
+%token <empty> ALL DISTINCT AS EXISTS NULL ASC DESC VALUES INTO DUPLICATE KEY DEFAULT SET LOCK
 %token <bytes> ID STRING NUMBER VALUE_ARG COMMENT
-%token <empty> LE GE NE NULL_SAFE_EQUAL
-%token <empty> '(' '=' '<' '>' '~'
+%token <empty> '(' '~'
 
 %left <empty> UNION MINUS EXCEPT INTERSECT
 %left <empty> ','
 %left <empty> JOIN STRAIGHT_JOIN LEFT RIGHT INNER OUTER CROSS NATURAL USE FORCE
 %left <empty> ON
-%left <empty> AND OR
+%left <empty> OR
+%left <empty> AND
 %right <empty> NOT
-%left <empty> '&' '|' '^'
+%left <empty> BETWEEN CASE WHEN THEN ELSE
+//REGEXP 
+%left <empty> '=' '<' '>' LE GE NE NULL_SAFE_EQUAL IS LIKE IN
+%left <empty> '|'
+%left <empty> '&'
+//%left <empty> SHIFT_LEFT SHIFT_RIGHT
 %left <empty> '+' '-'
 %left <empty> '*' '/' '%'
+%left <empty> '^'
 %nonassoc <empty> '.'
 %left <empty> UNARY
-%right <empty> CASE, WHEN, THEN, ELSE
+
 %left <empty> END
 
 // Transaction Tokens
@@ -117,6 +123,9 @@ var (
 // DDL Tokens
 %token <empty> CREATE ALTER DROP RENAME
 %token <empty> TABLE INDEX VIEW TO IGNORE IF UNIQUE USING
+
+// truncate 
+%token <empty> TRUNCATE
 
 %start any_command
 
@@ -169,11 +178,13 @@ var (
 %type <empty> exists_opt not_exists_opt non_rename_operation to_opt constraint_opt using_opt
 %type <bytes> sql_id
 %type <empty> force_eof
+%type <str> table_opt
 
 %type <statement> begin_statement commit_statement rollback_statement
 %type <statement> replace_statement
 %type <statement> admin_statement
 %type <statement> use_statement
+%type <statement> truncate_statement
 
 %%
 
@@ -202,6 +213,7 @@ command:
 | replace_statement
 | admin_statement
 | use_statement
+| truncate_statement
 
 select_statement:
   SELECT comment_opt distinct_opt select_expression_list
@@ -268,6 +280,10 @@ set_statement:
   {
     $$ = &Set{Comments: Comments($2), Exprs: $3}
   }
+| SET comment_opt NAMES DEFAULT
+   {
+     $$ = &Set{Comments: Comments($2), Exprs: UpdateExprs{&UpdateExpr{Name: &ColName{Name:[]byte("names")}, Expr: StrVal("default")}}}
+   }
 | SET comment_opt NAMES value_expression 
   {
     $$ = &Set{Comments: Comments($2), Exprs: UpdateExprs{&UpdateExpr{Name: &ColName{Name:[]byte("names")}, Expr: $4}}}
@@ -324,6 +340,12 @@ use_statement:
   USE sql_id
   {
 	$$= &UseDB{DB : string($2)}
+  }
+
+truncate_statement:
+  TRUNCATE comment_opt table_opt dml_table_expression
+  {
+    $$ = &Truncate{Comments: Comments($2), TableOpt: $3, Table: $4}
   }
 
 create_statement:
@@ -904,6 +926,10 @@ column_name:
   {
     $$ = &ColName{Qualifier: $1, Name: $3}
   }
+| ID '.' ID '.' sql_id
+  {
+    $$ = &ColName{Qualifier: $3, Name: $5}
+  }
 
 value:
   STRING
@@ -1058,7 +1084,11 @@ update_list:
 update_expression:
   column_name '=' value_expression
   {
-    $$ = &UpdateExpr{Name: $1, Expr: $3} 
+    $$ = &UpdateExpr{Name: $1, Expr: $3}
+  }
+| column_name '=' ON
+  {
+    $$ = &UpdateExpr{Name: $1, Expr: StrVal("ON")}
   }
 
 exists_opt:
@@ -1112,4 +1142,13 @@ sql_id:
 force_eof:
 {
   ForceEOF(yylex)
+}
+
+table_opt:
+{
+  $$ = ""
+}
+| TABLE
+{
+  $$ = AST_TABLE
 }

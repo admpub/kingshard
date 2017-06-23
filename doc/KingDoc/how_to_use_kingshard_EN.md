@@ -20,6 +20,11 @@ kingshard run with a configuration file (ks.yaml). Before running kingshard, the
 ```
 # server listen addr
 addr : 0.0.0.0:9696
+# the web api server
+web_addr : 0.0.0.0:9797
+#HTTP Basic Auth
+web_user : admin
+web_password : admin
 
 # server user and password
 user :  kingshard
@@ -58,7 +63,7 @@ nodes :
     # master represents a real mysql master server 
     master : 127.0.0.1:3306
 
-    # slave represents a real mysql salve server,and the number after '@' is 
+    # slave represents a real mysql slave server,and the number after '@' is 
     # read load weight of this slave.
     slave : 
     down_after_noalive : 32
@@ -75,20 +80,20 @@ nodes :
     # master represents a real mysql master server 
     master : 192.168.59.103:3307
 
-    # slave represents a real mysql salve server 
+    # slave represents a real mysql slave server 
     slave : 
 
     # down mysql after N seconds noalive
     # 0 will no down
     down_after_noalive: 32
 
-# schema defines which db can be used by client and this db's sql will be executed in which nodes, the db is also the default database
+# schema defines which db can be used by client and this db's sql will be executed in which nodes
 schema :
-    db : kingshard
     nodes: [node1,node2]
     default: node1      
     shard:
     -   
+        db : kingshard
         table: test_shard_hash
         key: id
         nodes: [node1, node2]
@@ -96,6 +101,7 @@ schema :
         locations: [4,4]
 
     -   
+        db : kingshard
         table: test_shard_range
         key: id
         type: range
@@ -510,6 +516,17 @@ admin server(opt,k,v) values('del','black_sql','select count(*) from sbtest1')
 #save config
 admin server(opt,k,v) values('save','proxy','config')
 ```
+
+### 5.4 support LVS/Keepalived
+
+```
+#show status of kingshard
+admin server(opt,k,v) values('show','proxy','status')
+
+#change status of kingshard online/offline
+admin server(opt,k,v) values('change','proxy','online')
+
+`````
 
 ## 6.Requirement and feedback
 

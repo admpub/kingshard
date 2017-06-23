@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strconv"
 
+	"strings"
+
 	"github.com/flike/kingshard/core/errors"
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/sqlparser"
@@ -39,9 +41,21 @@ type Plan struct {
 	//the rows for insert or replace.
 	Rows map[int]sqlparser.Values
 
-	RouteTableIndexs []int
-	RouteNodeIndexs  []int
-	RewrittenSqls    map[string][]string
+	SubTableValueGroups map[int]sqlparser.ValTuple //按照tableIndex存放ValueExpr
+	InRightToReplace    *sqlparser.ComparisonExpr  //记录in的右边Expr,用来动态替换不同table in的值
+	RouteTableIndexs    []int
+	RouteNodeIndexs     []int
+	RewrittenSqls       map[string][]string
+}
+
+func (plan *Plan) rewriteWhereIn(tableIndex int) (sqlparser.ValExpr, error) {
+	var oldright sqlparser.ValExpr
+	if plan.InRightToReplace != nil && plan.SubTableValueGroups[tableIndex] != nil {
+		//assign corresponding values to different table index
+		oldright = plan.InRightToReplace.Right
+		plan.InRightToReplace.Right = plan.SubTableValueGroups[tableIndex]
+	}
+	return oldright, nil
 }
 
 func (plan *Plan) notList(l []int) []int {
@@ -334,7 +348,7 @@ func (plan *Plan) getValueType(valExpr sqlparser.ValExpr) int {
 		if string(node.Qualifier) == plan.Rule.Table {
 			node.Qualifier = nil
 		}
-		if string(node.Name) == plan.Rule.Key {
+		if strings.ToLower(string(node.Name)) == plan.Rule.Key {
 			return EID_NODE //表示这是分片id对应的node
 		}
 	case sqlparser.ValTuple:
@@ -386,6 +400,9 @@ func (plan *Plan) getTableIndexByBoolExpr(node sqlparser.BoolExpr) ([]int, error
 			left := plan.getValueType(node.Left)
 			right := plan.getValueType(node.Right)
 			if left == EID_NODE && right == LIST_NODE {
+				if strings.EqualFold(node.Operator, "in") { //only deal with in expr, it's impossible to process not in here.
+					plan.InRightToReplace = node
+				}
 				return plan.getTableIndexs(node)
 			}
 		}
@@ -402,17 +419,26 @@ func (plan *Plan) getTableIndexByBoolExpr(node sqlparser.BoolExpr) ([]int, error
 
 //获得(12,14,23)对应的table index
 func (plan *Plan) getTableIndexsByTuple(valExpr sqlparser.ValExpr) ([]int, error) {
-	shardset := make(map[int]bool)
+	shardset := make(map[int]sqlparser.ValTuple)
 	switch node := valExpr.(type) {
 	case sqlparser.ValTuple:
 		for _, n := range node {
+			//n.Format()
 			index, err := plan.getTableIndexByValue(n)
+
 			if err != nil {
 				return nil, err
 			}
-			shardset[index] = true
+			valExprs := shardset[index]
+
+			if valExprs == nil {
+				valExprs = make([]sqlparser.ValExpr, 0)
+			}
+			valExprs = append(valExprs, n)
+			shardset[index] = valExprs
 		}
 	}
+	plan.SubTableValueGroups = shardset
 	shardlist := make([]int, len(shardset))
 	index := 0
 	for k := range shardset {
@@ -460,7 +486,7 @@ func (plan *Plan) GetIRKeyIndex(cols sqlparser.Columns) error {
 	for i, _ := range cols {
 		colname := string(cols[i].(*sqlparser.NonStarExpr).Expr.(*sqlparser.ColName).Name)
 
-		if colname == plan.Rule.Key {
+		if strings.ToLower(colname) == plan.Rule.Key {
 			plan.KeyIndex = i
 			break
 		}

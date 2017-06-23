@@ -96,6 +96,8 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 		return c.handleUseDB(v.DB)
 	case *sqlparser.SimpleSelect:
 		return c.handleSimpleSelect(v)
+	case *sqlparser.Truncate:
+		return c.handleExec(stmt, nil)
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}
@@ -141,10 +143,12 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 	}
 
 	if err = co.UseDB(c.db); err != nil {
+		//reset the database to null
+		c.db = ""
 		return
 	}
 
-	if err = co.SetCharset(c.charset); err != nil {
+	if err = co.SetCharset(c.charset, c.collation); err != nil {
 		return
 	}
 
@@ -283,7 +287,9 @@ func (c *ClientConn) executeInMultiNodes(conns map[string]*backend.BackendConn, 
 			err = e
 			break
 		}
-		r[i] = rs[i].(*mysql.Result)
+		if rs[i] != nil {
+			r[i] = rs[i].(*mysql.Result)
+		}
 	}
 
 	return r, err
@@ -342,7 +348,7 @@ func (c *ClientConn) newEmptyResultset(stmt *sqlparser.Select) *mysql.Resultset 
 }
 
 func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) error {
-	plan, err := c.schema.rule.BuildPlan(stmt)
+	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
 	if err != nil {
 		return err
 	}
